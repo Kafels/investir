@@ -7,7 +7,7 @@ from typing import no_type_check
 
 from moneyed import Currency, Money
 
-from investir.const import BASE_CURRENCY
+from investir.config import config
 
 ArithmeticFn = Callable[[Money | None, Money | None], Money | None]
 ScalarFn = Callable[[Money | None], Money | None]
@@ -83,7 +83,11 @@ class Fees:
     """Securities and Exchange Commission fee"""
     sec: Money | None = None
 
-    default_currency: Currency = BASE_CURRENCY
+    default_currency: Currency = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        if self.default_currency is None:
+            object.__setattr__(self, "default_currency", config.base_currency)
 
     @property
     def total(self) -> Money:

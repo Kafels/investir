@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Final
 
-from moneyed import get_currency
+from investir.config import config
 
 # Minimum timestamp for an order. Different rules apply on orders made
 # before 6 April 2008. See:
@@ -25,4 +25,19 @@ CURRENCY_CODES: Final = frozenset(
     ]
 )
 
-BASE_CURRENCY: Final = get_currency("GBP")
+CURRENCY_SYMBOLS: Final = {
+    "GBP": "£",
+    "EUR": "€",
+    "USD": "$",
+    "CHF": "CHF",
+}
+
+
+def get_base_currency():
+    """Return the configured base currency."""
+    return config.base_currency
+
+
+def get_currency_symbol() -> str:
+    """Return the symbol for the configured base currency."""
+    return CURRENCY_SYMBOLS.get(config.base_currency.code, config.base_currency.code)

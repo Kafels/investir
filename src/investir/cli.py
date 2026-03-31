@@ -238,6 +238,27 @@ def main_callback(
             ),
         ),
     ] = config.cache_dir,
+    base_currency: Annotated[
+        str,
+        typer.Option(
+            "--base-currency",
+            help=(
+                "Base currency for calculations and reporting "
+                "(e.g. GBP, EUR). Defaults to GBP."
+            ),
+        ),
+    ] = "GBP",
+    calendar_year: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--calendar-year/--tax-year",
+            help=(
+                "Use calendar year (Jan-Dec) instead of UK tax year (Apr-Apr) "
+                "for fiscal period grouping. Automatically enabled for non-GBP "
+                "base currencies."
+            ),
+        ),
+    ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", help="Enable additional logging.")
     ] = False,
@@ -259,9 +280,19 @@ def main_callback(
     if verbose and quiet:
         raise MutuallyExclusiveOption("--verbose", "--quiet")
 
+    from moneyed import get_currency
+
     config.strict = strict
     config.offline = offline
     config.cache_dir = cache_dir
+    config.base_currency = get_currency(base_currency.upper())
+
+    # Determine fiscal year period
+    if calendar_year is True or (
+        calendar_year is None and config.base_currency.code != "GBP"
+    ):
+        config.tax_year_start_month = 1
+        config.tax_year_start_day = 1
 
     if quiet:
         config.log_level = logging.CRITICAL

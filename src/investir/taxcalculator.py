@@ -6,10 +6,10 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, TypeAlias, TypeVar, cast
 
-from moneyed import GBP, Money
+from moneyed import Money
 
 from investir.config import config
-from investir.const import BASE_CURRENCY
+from investir.const import get_base_currency
 from investir.exceptions import IncompleteRecordsError, InvestirError
 from investir.fees import scalar_op
 from investir.findata import FinancialData
@@ -68,13 +68,16 @@ class CapitalGain:
                 return f"Bed & B. ({self.acquisition_date})"
 
     def __str__(self) -> str:
+        from investir.const import get_currency_symbol
+
+        sym = get_currency_symbol()
         return (
             f"{self.disposal.date} "
             f"{self.disposal.isin:<4} "
             f"quantity: {self.quantity}, "
-            f"cost: £{self.cost:.2f}, "
-            f"proceeds: £{self.disposal.gross_proceeds.amount}, "
-            f"gain: £{self.gain_loss:.2f}, "
+            f"cost: {sym}{self.cost:.2f}, "
+            f"proceeds: {sym}{self.disposal.gross_proceeds.amount}, "
+            f"gain: {sym}{self.gain_loss:.2f}, "
             f"identification: {self.identification}"
         )
 
@@ -133,7 +136,7 @@ class TaxCalculator:
         holding = self._holdings[isin]
         security_name = self._trhistory.get_security_name(isin) or ""
         if (price := self._findata.get_security_price(isin, security_name)) and (
-            price_base_currency := self._findata.convert_money(price, BASE_CURRENCY)
+            price_base_currency := self._findata.convert_money(price, get_base_currency())
         ):
             return holding.quantity * price_base_currency.amount
 
@@ -148,9 +151,9 @@ class TaxCalculator:
 
         orders = self._trhistory.orders
 
-        # Convert acquisitions and disposals not realised in pound
-        # sterling to use monetary values specified in this currency.
-        orders = [self._convert_to_sterling(o) for o in orders]
+        # Convert acquisitions and disposals not realised in the base
+        # currency to use monetary values specified in this currency.
+        orders = [self._convert_to_base_currency(o) for o in orders]
 
         # Exclude forex fees from the `total` and `fees` fields if
         # necessary.
@@ -194,14 +197,16 @@ class TaxCalculator:
                 events, key=lambda te: (te.disposal.timestamp, te.disposal.isin)
             )
 
-    def _convert_to_sterling(self, order: Order) -> Order:
+    def _convert_to_base_currency(self, order: Order) -> Order:
+        base = get_base_currency()
+
         def convert(m):
             if m is None:
                 return m
-            if (new_m := self._findata.convert_money(m, GBP, order.date)) is None:
+            if (new_m := self._findata.convert_money(m, base, order.date)) is None:
                 raise InvestirError(
                     f"Failed to get historical exchange rate for "
-                    f"GBP-{m.currency} on {order.date}"
+                    f"{base.code}-{m.currency} on {order.date}"
                 )
             return new_m
 
@@ -211,14 +216,15 @@ class TaxCalculator:
             # Multiple fees in different currencies: conversion needed.
             fees_currency = None
 
-        if (order.total.currency, fees_currency) != (GBP, GBP):
+        if (order.total.currency, fees_currency) != (base, base):
             total = convert(order.total)
             fees = scalar_op(convert, order.fees)
+            fees = replace(fees, default_currency=base)
             return replace(
                 order,
                 total=total,
                 fees=fees,
-                notes="Conversion to sterling from order {order.number}",
+                notes=f"Conversion to {base.code} from order {{order.number}}",
             )
 
         return order

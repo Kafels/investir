@@ -11,7 +11,7 @@ from typing import Any, Mapping, Set
 import prettytable
 from moneyed import Currency, Money
 
-from investir.const import BASE_CURRENCY
+from investir.const import get_base_currency
 from investir.utils import boldify
 
 
@@ -173,7 +173,7 @@ class PrettyTable(prettytable.PrettyTable):
             if field.format == Format.MONEY:
                 currencies = self._get_currencies(field.name)
                 if len(currencies) == 0:
-                    field.name += f" ({BASE_CURRENCY})"
+                    field.name += f" ({get_base_currency()})"
                 elif len(currencies) == 1:
                     currency = next(iter(currencies))
                     field.name += f" ({currency.code})"

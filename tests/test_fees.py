@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from moneyed import USD
 
-from investir.const import BASE_CURRENCY
+from investir.const import get_base_currency
 from investir.fees import Fees
 from investir.utils import sterling
 
@@ -15,7 +15,7 @@ FEES = Fees(
 
 
 def test_fees_none_set():
-    assert Fees().total == BASE_CURRENCY.zero
+    assert Fees().total == get_base_currency().zero
     assert Fees(default_currency=USD).total == USD.zero
 
 

@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import TypeVar
 
 from investir.config import config
-from investir.const import BASE_CURRENCY
+from investir.const import get_base_currency, get_currency_symbol
 from investir.exceptions import AmbiguousTickerError
 from investir.prettytable import Field, Format, OutputFormat, PrettyTable
 from investir.taxcalculator import TaxCalculator
@@ -23,9 +23,10 @@ T = TypeVar("T", bound=Transaction)
 logger = logging.getLogger(__name__)
 
 
-def gbp(amount: Decimal) -> str:
+def format_currency(amount: Decimal) -> str:
+    symbol = get_currency_symbol()
     sign = "" if amount >= 0.0 else "-"
-    return f"{sign}£{abs(amount):.2f}"
+    return f"{sign}{symbol}{abs(amount):.2f}"
 
 
 @dataclass
@@ -43,12 +44,12 @@ class CapitalGainsSummary:
     def __str__(self) -> str:
         return (
             f"{'Number of disposals:':40}{self.num_disposals:>10}      "
-            f"{'Gains in the year, before losses:':34}{gbp(self.total_gains):>10}\n"
-            f"{'Disposal proceeds:':40}{gbp(self.disposal_proceeds):>10}      "
-            f"{'Losses in the year:':34}{gbp(self.total_losses):>10}\n"
+            f"{'Gains in the year, before losses:':34}{format_currency(self.total_gains):>10}\n"
+            f"{'Disposal proceeds:':40}{format_currency(self.disposal_proceeds):>10}      "
+            f"{'Losses in the year:':34}{format_currency(self.total_losses):>10}\n"
             f"{'Allowable costs (incl. purchase price):':40}"
-            f"{gbp(self.total_cost):>10}      "
-            f"{'Net gain or loss:':34}{gbp(self.net_gains):>10}\n"
+            f"{format_currency(self.total_cost):>10}      "
+            f"{'Net gain or loss:':34}{format_currency(self.net_gains):>10}\n"
         )
 
 
@@ -272,9 +273,9 @@ class OutputGenerator:
                 Field("Security Name"),
                 Field("ISIN"),
                 Field("Quantity", Format.QUANTITY),
-                Field(f"Cost ({BASE_CURRENCY})", Format.DECIMAL),
-                Field(f"Proceeds ({BASE_CURRENCY})", Format.DECIMAL),
-                Field(f"Gain/loss ({BASE_CURRENCY})", Format.DECIMAL),
+                Field(f"Cost ({get_base_currency()})", Format.DECIMAL),
+                Field(f"Proceeds ({get_base_currency()})", Format.DECIMAL),
+                Field(f"Gain/loss ({get_base_currency()})", Format.DECIMAL),
             ]
         )
 
@@ -325,15 +326,15 @@ class OutputGenerator:
             [
                 Field("Security Name"),
                 Field("ISIN"),
-                Field(f"Cost ({BASE_CURRENCY})", Format.DECIMAL),
+                Field(f"Cost ({get_base_currency()})", Format.DECIMAL),
                 Field("Quantity", Format.QUANTITY),
                 Field(
-                    f"Current Value ({BASE_CURRENCY})",
+                    f"Current Value ({get_base_currency()})",
                     Format.DECIMAL,
                     visible=show_gain_loss,
                 ),
                 Field(
-                    f"Gain/Loss ({BASE_CURRENCY})",
+                    f"Gain/Loss ({get_base_currency()})",
                     Format.DECIMAL,
                     visible=show_gain_loss,
                 ),
