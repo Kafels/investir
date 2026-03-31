@@ -76,6 +76,7 @@ class Trading212Parser:
         "Currency (Finra fee)",
         "Transaction fee",
         "Currency (Transaction fee)",
+        "ATM Withdrawal Fee",
         # Legacy
         "Stamp duty (GBP)",
         "Stamp duty reserve tax (GBP)",
@@ -141,6 +142,9 @@ class Trading212Parser:
             "Card debit": None,
             "Spending cashback": None,
             "Currency conversion": None,
+            "New card cost": None,
+            "Custom stock distribution": None,
+            "Card ATM Withdrawal": None,
         }
 
         with self._csv_file.open(encoding="utf-8") as file:

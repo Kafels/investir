@@ -2,3 +2,4 @@
 .venv
 src/investir.egg-info/
 __pycache__
+**/.idea/**
