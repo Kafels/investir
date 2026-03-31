@@ -87,6 +87,7 @@ class Section104Holding:
     isin: ISIN
     cost: Decimal
     quantity: Decimal
+    first_acquisition_date: date | None = None
 
     def add(self, cost: Decimal, quantity: Decimal) -> None:
         self.cost += cost
@@ -165,6 +166,87 @@ class TaxCalculator:
         # consolidation event.
         orders = [self._normalise_quantity(o) for o in orders]
 
+        if config.calc_method == "fifo":
+            self._calculate_fifo(orders)
+        else:
+            self._calculate_hmrc(orders)
+
+        # Sort capital gains by disposal date for the report.
+        for year, events in self._capital_gains.items():
+            self._capital_gains[year] = sorted(
+                events, key=lambda te: (te.disposal.timestamp, te.disposal.isin)
+            )
+
+    def _calculate_fifo(self, orders: Sequence[Order]) -> None:
+        """Calculate capital gains using FIFO (First In, First Out)."""
+        acquisitions: dict[ISIN, list[Acquisition]] = defaultdict(list)
+
+        # Separate and sort orders by date.
+        all_acquisitions: list[Acquisition] = sorted(
+            [o for o in orders if isinstance(o, Acquisition)],
+            key=lambda o: o.date,
+        )
+        all_disposals: list[Disposal] = sorted(
+            [o for o in orders if isinstance(o, Disposal)],
+            key=lambda o: o.date,
+        )
+
+        for a in all_acquisitions:
+            acquisitions[a.isin].append(a)
+
+        for d in all_disposals:
+            remaining_quantity = d.quantity
+            total_cost = Decimal("0.0")
+            acquisition_date: date | None = None
+
+            while remaining_quantity > 0 and acquisitions[d.isin]:
+                a = acquisitions[d.isin][0]
+
+                if acquisition_date is None:
+                    acquisition_date = a.date
+
+                if a.quantity <= remaining_quantity:
+                    # Use the entire acquisition.
+                    total_cost += a.total.amount
+                    remaining_quantity -= a.quantity
+                    acquisitions[d.isin].pop(0)
+                else:
+                    # Partially use this acquisition.
+                    cost_portion = a.total.amount * remaining_quantity / a.quantity
+                    total_cost += cost_portion
+
+                    # Update the remaining acquisition.
+                    new_total = a.total - Money(cost_portion, a.total.currency)
+                    new_quantity = a.quantity - remaining_quantity
+                    acquisitions[d.isin][0] = replace(
+                        a, total=new_total, quantity=new_quantity
+                    )
+                    remaining_quantity = Decimal("0.0")
+
+            if remaining_quantity > 0:
+                raise_or_warn(
+                    IncompleteRecordsError(
+                        d.isin, self._trhistory.get_security_name(d.isin) or "?"
+                    )
+                )
+                continue
+
+            self._capital_gains[d.tax_year()].append(
+                CapitalGain(d, total_cost + d.fees.total.amount, acquisition_date)
+            )
+
+        # Build holdings from remaining acquisitions.
+        for isin, remaining in acquisitions.items():
+            if remaining:
+                total_cost = sum(a.total.amount for a in remaining)
+                total_quantity = sum(a.quantity for a in remaining)
+                first_date = remaining[0].date
+                self._holdings[isin] = Section104Holding(
+                    isin, total_cost, total_quantity, first_date
+                )
+
+    def _calculate_hmrc(self, orders: Sequence[Order]) -> None:
+        """Calculate capital gains using HMRC share identification rules."""
         # Group together orders that have the same isin, date and type.
         same_day = self._group_same_day(orders)
 
@@ -186,16 +268,6 @@ class TaxCalculator:
 
             # Process shares disposed from a Section 104 pool.
             self._process_section104_disposals(isin)
-
-        # Capital gains are calculated ticker by ticker in order to be
-        # able to show all the intermediary calculations grouped together
-        # as a future improvement. However, for the report, it is more
-        # intuitive to show the capital gain transactions ordered by
-        # their disposal date.
-        for year, events in self._capital_gains.items():
-            self._capital_gains[year] = sorted(
-                events, key=lambda te: (te.disposal.timestamp, te.disposal.isin)
-            )
 
     def _convert_to_base_currency(self, order: Order) -> Order:
         base = get_base_currency()

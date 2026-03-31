@@ -259,6 +259,18 @@ def main_callback(
             ),
         ),
     ] = None,
+    calc_method: Annotated[
+        Optional[str],
+        typer.Option(
+            "--calc-method",
+            help=(
+                "Capital gains calculation method: 'hmrc' for UK share "
+                "identification rules (Section 104 pool), 'fifo' for "
+                "First In First Out. Defaults to 'fifo' for non-GBP "
+                "currencies, 'hmrc' for GBP."
+            ),
+        ),
+    ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", help="Enable additional logging.")
     ] = False,
@@ -293,6 +305,12 @@ def main_callback(
     ):
         config.tax_year_start_month = 1
         config.tax_year_start_day = 1
+
+    # Determine calculation method
+    if calc_method is not None:
+        config.calc_method = calc_method
+    elif config.base_currency.code != "GBP":
+        config.calc_method = "fifo"
 
     if quiet:
         config.log_level = logging.CRITICAL
@@ -408,6 +426,13 @@ def capital_gains_command(
     losses_only: Annotated[
         bool, typer.Option("--losses", help="Show only capital losses.")
     ] = False,
+    no_aggregate: Annotated[
+        bool,
+        typer.Option(
+            "--no-aggregate",
+            help="Disable aggregation of same-day entries in FIFO mode.",
+        ),
+    ] = False,
     tax_year: TaxYearOpt = None,
     ticker: TickerOpt = None,
     include_fx_fees: IncludeFxFeesOpt = config.include_fx_fees,
@@ -433,7 +458,9 @@ def capital_gains_command(
 
     try:
         outputter = make_output_generator(parse(files), ctx)
-        outputter.show_capital_gains(format, tax_year, ticker, gains_only, losses_only)
+        outputter.show_capital_gains(
+            format, tax_year, ticker, gains_only, losses_only, aggregate=not no_aggregate
+        )
     except InvestirError as ex:
         abort(ex)
 

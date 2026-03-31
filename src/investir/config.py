@@ -17,6 +17,7 @@ class Config:
     base_currency: Currency = field(default_factory=lambda: get_currency("GBP"))
     tax_year_start_month: int = 4
     tax_year_start_day: int = 6
+    calc_method: str = "hmrc"  # "hmrc" or "fifo"
 
     @property
     def calendar_year_fiscal(self) -> bool:

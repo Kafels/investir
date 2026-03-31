@@ -33,6 +33,8 @@ def date_format(format: str) -> Callable[[str, Any], str]:
     def _date_format(_field, val) -> str:
         if isinstance(val, date):
             return val.strftime(format)
+        if val is None:
+            return ""
         return val
 
     return _date_format
@@ -187,7 +189,7 @@ class PrettyTable(prettytable.PrettyTable):
         for field in self.__fields:
             match field.format:
                 case Format.DATE:
-                    self.custom_format[field.name] = date_format("%d/%m/%Y")
+                    self.custom_format[field.name] = date_format("%Y/%m/%d")
                     self.align[field.name] = "l"
                 case Format.DECIMAL:
                     self.custom_format[field.name] = decimal_format(2)

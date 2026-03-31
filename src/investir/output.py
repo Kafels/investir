@@ -89,6 +89,7 @@ class OutputGenerator:
         ticker_filter: Ticker | None,
         gains_only: bool,
         losses_only: bool,
+        aggregate: bool = True,
     ) -> None:
         if tax_year_filter is not None:
             tax_years: Sequence = [tax_year_filter]
@@ -97,7 +98,7 @@ class OutputGenerator:
 
         for tax_year_idx, tax_year in enumerate(tax_years):
             table, summary = self._create_capital_gains_table_and_summary(
-                tax_year, ticker_filter, gains_only, losses_only
+                tax_year, ticker_filter, gains_only, losses_only, aggregate
             )
 
             if table:
@@ -263,13 +264,19 @@ class OutputGenerator:
         ticker_filter: Ticker | None,
         gains_only: bool,
         losses_only: bool,
+        aggregate: bool = True,
     ) -> tuple[PrettyTable, CapitalGainsSummary]:
         assert not (gains_only and losses_only)
+
+        if config.calc_method == "fifo":
+            id_field = Field("Acquisition Date", Format.DATE)
+        else:
+            id_field = Field("Identification")
 
         table = PrettyTable(
             [
                 Field("Disposal Date", Format.DATE),
-                Field("Identification"),
+                id_field,
                 Field("Security Name"),
                 Field("ISIN"),
                 Field("Quantity", Format.QUANTITY),
@@ -282,36 +289,94 @@ class OutputGenerator:
         num_disposals = 0
         disposal_proceeds = total_cost = total_gains = total_losses = Decimal("0.0")
 
-        for cg in self._taxcalc.capital_gains(tax_year):
-            if ticker_filter is not None and cg.disposal.ticker != ticker_filter:
-                continue
+        capital_gains_list = list(self._taxcalc.capital_gains(tax_year))
 
-            if gains_only and cg.gain_loss < 0.0:
-                continue
+        # In FIFO mode, aggregate entries with the same disposal date,
+        # acquisition date and ISIN into a single row.
+        if config.calc_method == "fifo" and aggregate:
+            aggregated: dict[tuple, dict] = {}
+            for cg in capital_gains_list:
+                key = (cg.disposal.date, cg.acquisition_date, cg.disposal.isin)
+                if key in aggregated:
+                    agg = aggregated[key]
+                    agg["quantity"] += cg.quantity
+                    agg["cost"] += cg.cost
+                    agg["proceeds"] += cg.disposal.gross_proceeds.amount
+                    agg["gain_loss"] += cg.gain_loss
+                else:
+                    aggregated[key] = {
+                        "disposal_date": cg.disposal.date,
+                        "acquisition_date": cg.acquisition_date,
+                        "name": cg.disposal.name,
+                        "isin": cg.disposal.isin,
+                        "ticker": cg.disposal.ticker,
+                        "quantity": cg.quantity,
+                        "cost": cg.cost,
+                        "proceeds": cg.disposal.gross_proceeds.amount,
+                        "gain_loss": cg.gain_loss,
+                    }
 
-            if losses_only and cg.gain_loss > 0.0:
-                continue
+            for agg in aggregated.values():
+                if ticker_filter is not None and agg["ticker"] != ticker_filter:
+                    continue
+                if gains_only and agg["gain_loss"] < 0.0:
+                    continue
+                if losses_only and agg["gain_loss"] > 0.0:
+                    continue
 
-            table.add_row(
-                [
-                    cg.disposal.date,
-                    cg.identification,
-                    cg.disposal.name,
-                    cg.disposal.isin,
-                    cg.quantity,
-                    cg.cost,
-                    cg.disposal.gross_proceeds.amount,
-                    cg.gain_loss,
-                ]
-            )
+                table.add_row(
+                    [
+                        agg["disposal_date"],
+                        agg["acquisition_date"],
+                        agg["name"],
+                        agg["isin"],
+                        agg["quantity"],
+                        agg["cost"],
+                        agg["proceeds"],
+                        agg["gain_loss"],
+                    ]
+                )
 
-            num_disposals += 1
-            disposal_proceeds += round(cg.disposal.gross_proceeds.amount, 2)
-            total_cost += round(cg.cost, 2)
-            if cg.gain_loss > 0.0:
-                total_gains += cg.gain_loss
-            else:
-                total_losses += abs(cg.gain_loss)
+                num_disposals += 1
+                disposal_proceeds += round(agg["proceeds"], 2)
+                total_cost += round(agg["cost"], 2)
+                if agg["gain_loss"] > 0.0:
+                    total_gains += agg["gain_loss"]
+                else:
+                    total_losses += abs(agg["gain_loss"])
+        else:
+            for cg in capital_gains_list:
+                if ticker_filter is not None and cg.disposal.ticker != ticker_filter:
+                    continue
+
+                if gains_only and cg.gain_loss < 0.0:
+                    continue
+
+                if losses_only and cg.gain_loss > 0.0:
+                    continue
+
+                id_value = cg.acquisition_date if config.calc_method == "fifo" else cg.identification
+
+                table.add_row(
+                    [
+                        cg.disposal.date,
+                        id_value,
+                        cg.disposal.name,
+                        cg.disposal.isin,
+                        cg.quantity,
+                        cg.cost,
+                        cg.disposal.gross_proceeds.amount,
+                        cg.gain_loss,
+                    ]
+                )
+
+                num_disposals += 1
+                disposal_proceeds += round(cg.disposal.gross_proceeds.amount, 2)
+                total_cost += round(cg.cost, 2)
+                if cg.gain_loss > 0.0:
+                    total_gains += cg.gain_loss
+                else:
+                    total_losses += abs(cg.gain_loss)
 
         summary = CapitalGainsSummary(
             num_disposals, disposal_proceeds, total_cost, total_gains, total_losses
