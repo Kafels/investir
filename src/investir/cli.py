@@ -433,6 +433,13 @@ def capital_gains_command(
             help="Disable aggregation of same-day entries in FIFO mode.",
         ),
     ] = False,
+    irs_pt: Annotated[
+        bool,
+        typer.Option(
+            "--irs-pt",
+            help="Output in Portuguese IRS Anexo J format.",
+        ),
+    ] = False,
     tax_year: TaxYearOpt = None,
     ticker: TickerOpt = None,
     include_fx_fees: IncludeFxFeesOpt = config.include_fx_fees,
@@ -459,7 +466,8 @@ def capital_gains_command(
     try:
         outputter = make_output_generator(parse(files), ctx)
         outputter.show_capital_gains(
-            format, tax_year, ticker, gains_only, losses_only, aggregate=not no_aggregate
+            format, tax_year, ticker, gains_only, losses_only,
+            aggregate=not no_aggregate, irs_pt=irs_pt
         )
     except InvestirError as ex:
         abort(ex)
