@@ -189,7 +189,7 @@ class PrettyTable(prettytable.PrettyTable):
         for field in self.__fields:
             match field.format:
                 case Format.DATE:
-                    self.custom_format[field.name] = date_format("%Y/%m/%d")
+                    self.custom_format[field.name] = date_format("%d/%m/%Y")
                     self.align[field.name] = "l"
                 case Format.DECIMAL:
                     self.custom_format[field.name] = decimal_format(2)

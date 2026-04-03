@@ -166,7 +166,7 @@ class TaxCalculator:
         # consolidation event.
         orders = [self._normalise_quantity(o) for o in orders]
 
-        if config.calc_method == "fifo":
+        if config.costs_basis == "fifo":
             self._calculate_fifo(orders)
         else:
             self._calculate_hmrc(orders)

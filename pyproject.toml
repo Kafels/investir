@@ -14,7 +14,6 @@ dependencies = [
   "PyYAML ~= 6.0.0",
   "typer ~= 0.20.0",
   "yfinance ~= 1.0",
-  "pip>=26.0.1",
 ]
 optional-dependencies.lint = [
   "mypy ~= 1.18.0",

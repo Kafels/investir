@@ -74,7 +74,7 @@ def read_decimal(val: str, default: Decimal = Decimal("0.0")) -> Decimal:
 
 def read_base_currency(amount: str | None) -> Money | None:
     return (
-        Money(amount=amount, currency=config.base_currency)
+        Money(amount=amount, currency=config.currency)
         if amount is not None and amount.strip()
         else None
     )
@@ -97,7 +97,7 @@ def money(amount: Decimal | str, currency: str) -> Money:
 
 
 def base_currency_money(amount: str) -> Money:
-    return Money(amount=amount, currency=config.base_currency)
+    return Money(amount=amount, currency=config.currency)
 
 
 def sterling(amount: str) -> Money:

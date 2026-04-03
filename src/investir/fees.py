@@ -87,7 +87,7 @@ class Fees:
 
     def __post_init__(self):
         if self.default_currency is None:
-            object.__setattr__(self, "default_currency", config.base_currency)
+            object.__setattr__(self, "default_currency", config.currency)
 
     @property
     def total(self) -> Money:

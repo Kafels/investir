@@ -1,9 +1,15 @@
 import logging
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 
 from moneyed import Currency, get_currency
 from platformdirs import user_cache_dir
+
+
+class ReportFormat(str, Enum):
+    UK = "UK"
+    PT = "PT"
 
 
 @dataclass
@@ -14,10 +20,10 @@ class Config:
     include_fx_fees: bool = True
     log_level: int = logging.INFO
     use_colour: bool = True
-    base_currency: Currency = field(default_factory=lambda: get_currency("GBP"))
+    currency: Currency = field(default_factory=lambda: get_currency("GBP"))
     tax_year_start_month: int = 4
     tax_year_start_day: int = 6
-    calc_method: str = "hmrc"  # "hmrc" or "fifo"
+    costs_basis: str = "hmrc"  # "hmrc" or "fifo"
 
     @property
     def calendar_year_fiscal(self) -> bool:

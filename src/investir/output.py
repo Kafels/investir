@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import TypeVar
 
-from investir.config import config
+from investir.config import ReportFormat, config
 from investir.const import get_base_currency, get_currency_symbol
 from investir.exceptions import AmbiguousTickerError
 from investir.prettytable import Field, Format, OutputFormat, PrettyTable
@@ -54,57 +54,57 @@ class CapitalGainsSummary:
 
 
 class OutputGenerator:
+
     def __init__(self, trhistory: TransactionHistory, taxcalc: TaxCalculator) -> None:
         self._trhistory = trhistory
         self._taxcalc = taxcalc
 
     def show_orders(
-        self, format: OutputFormat, filters: Sequence[Callable] | None = None
+            self, format: OutputFormat, filters: Sequence[Callable] | None = None
     ) -> None:
         if table := self._create_orders_table(filters):
             print(table.to_string(format, leading_nl=config.logging_enabled))
 
     def show_dividends(
-        self, format: OutputFormat, filters: Sequence[Callable] | None = None
+            self, format: OutputFormat, filters: Sequence[Callable] | None = None
     ) -> None:
         if table := self._create_dividends_table(filters):
             print(table.to_string(format, leading_nl=config.logging_enabled))
 
     def show_transfers(
-        self, format: OutputFormat, filters: Sequence[Callable] | None = None
+            self, format: OutputFormat, filters: Sequence[Callable] | None = None
     ) -> None:
         if table := self._create_transfers_table(filters):
             print(table.to_string(format, leading_nl=config.logging_enabled))
 
     def show_interest(
-        self, format: OutputFormat, filters: Sequence[Callable] | None = None
+            self, format: OutputFormat, filters: Sequence[Callable] | None = None
     ) -> None:
         if table := self._create_interest_table(filters):
             print(table.to_string(format, leading_nl=config.logging_enabled))
 
     def show_capital_gains(
-        self,
-        format: OutputFormat,
-        tax_year_filter: TaxYear | None,
-        ticker_filter: Ticker | None,
-        gains_only: bool,
-        losses_only: bool,
-        aggregate: bool = True,
-        irs_pt: bool = False,
+            self,
+            format: OutputFormat,
+            tax_year_filter: TaxYear | None,
+            ticker_filter: Ticker | None,
+            gains_only: bool,
+            losses_only: bool,
+            aggregate: bool = True,
+            report_format: ReportFormat = ReportFormat.UK,
     ) -> None:
         if tax_year_filter is not None:
             tax_years: Sequence = [tax_year_filter]
         else:
             tax_years = sorted(self._taxcalc.disposal_years())
 
-        if irs_pt:
-            self._show_capital_gains_irs_pt(
-                tax_years, ticker_filter, gains_only, losses_only, aggregate
-            )
-            return
+        parse_fn = {
+            ReportFormat.UK: self._create_capital_gains_table_and_summary,
+            ReportFormat.PT: self._create_pt_table_and_summary
+        }[report_format]
 
         for tax_year_idx, tax_year in enumerate(tax_years):
-            table, summary = self._create_capital_gains_table_and_summary(
+            table, summary = parse_fn(
                 tax_year, ticker_filter, gains_only, losses_only, aggregate
             )
 
@@ -124,142 +124,16 @@ class OutputGenerator:
                     print(table.to_string(format, leading_nl=False))
 
     def show_holdings(
-        self,
-        format: OutputFormat,
-        ticker_filter: Ticker | None = None,
-        show_gain_loss: bool = False,
+            self,
+            format: OutputFormat,
+            ticker_filter: Ticker | None = None,
+            show_gain_loss: bool = False,
     ) -> None:
         if table := self._create_holdings_table(ticker_filter, show_gain_loss):
             print(table.to_string(format, leading_nl=config.logging_enabled))
 
-    def _show_capital_gains_irs_pt(
-        self,
-        tax_years: Sequence[TaxYear],
-        ticker_filter: Ticker | None,
-        gains_only: bool,
-        losses_only: bool,
-        aggregate: bool,
-    ) -> None:
-        row_num = 951
-
-        for tax_year_idx, tax_year in enumerate(tax_years):
-            table = PrettyTable(
-                [
-                    Field(""),
-                    Field("País da fonte"),
-                    Field("Código"),
-                    Field("R. Ano"),
-                    Field("R. Mês"),
-                    Field("R. Dia"),
-                    Field("R. Valor", Format.DECIMAL),
-                    Field("A. Ano"),
-                    Field("A. Mês"),
-                    Field("A. Dia"),
-                    Field("A. Valor", Format.DECIMAL),
-                    Field("Security Name"),
-                    Field("ISIN"),
-                    Field("Quantity", Format.QUANTITY),
-                ]
-            )
-
-            capital_gains_list = list(self._taxcalc.capital_gains(tax_year))
-
-            rows: list[dict] = []
-            if config.calc_method == "fifo" and aggregate:
-                aggregated: dict[tuple, dict] = {}
-                for cg in capital_gains_list:
-                    key = (cg.disposal.date, cg.acquisition_date, cg.disposal.isin)
-                    if key in aggregated:
-                        agg = aggregated[key]
-                        agg["proceeds"] += cg.disposal.gross_proceeds.amount
-                        agg["cost"] += cg.cost
-                        agg["gain_loss"] += cg.gain_loss
-                        agg["quantity"] += cg.quantity
-                    else:
-                        aggregated[key] = {
-                            "disposal_date": cg.disposal.date,
-                            "acquisition_date": cg.acquisition_date,
-                            "ticker": cg.disposal.ticker,
-                            "name": cg.disposal.name,
-                            "isin": cg.disposal.isin,
-                            "quantity": cg.quantity,
-                            "proceeds": cg.disposal.gross_proceeds.amount,
-                            "cost": cg.cost,
-                            "gain_loss": cg.gain_loss,
-                        }
-                rows = list(aggregated.values())
-            else:
-                for cg in capital_gains_list:
-                    rows.append({
-                        "disposal_date": cg.disposal.date,
-                        "acquisition_date": cg.acquisition_date,
-                        "ticker": cg.disposal.ticker,
-                        "name": cg.disposal.name,
-                        "isin": cg.disposal.isin,
-                        "quantity": cg.quantity,
-                        "proceeds": cg.disposal.gross_proceeds.amount,
-                        "cost": cg.cost,
-                        "gain_loss": cg.gain_loss,
-                    })
-
-            num_disposals = 0
-            disposal_proceeds = total_cost = total_gains = total_losses = Decimal("0.0")
-
-            for row in rows:
-                if ticker_filter is not None and row["ticker"] != ticker_filter:
-                    continue
-                if gains_only and row["gain_loss"] < 0.0:
-                    continue
-                if losses_only and row["gain_loss"] > 0.0:
-                    continue
-
-                d = row["disposal_date"]
-                a = row["acquisition_date"]
-
-                table.add_row([
-                    row_num,
-                    196,
-                    "G20",
-                    d.year,
-                    d.month,
-                    d.day,
-                    round(row["proceeds"], 2),
-                    a.year if a else "",
-                    a.month if a else "",
-                    a.day if a else "",
-                    round(row["cost"], 2),
-                    row["name"],
-                    row["isin"],
-                    row["quantity"],
-                ])
-                row_num += 1
-
-                num_disposals += 1
-                disposal_proceeds += round(row["proceeds"], 2)
-                total_cost += round(row["cost"], 2)
-                if row["gain_loss"] > 0.0:
-                    total_gains += row["gain_loss"]
-                else:
-                    total_losses += abs(row["gain_loss"])
-
-            if table:
-                print(end="\n" if tax_year_idx == 0 and config.logging_enabled else "")
-                print(
-                    boldify(
-                        f"Capital Gains Tax Report {tax_year_short_date(tax_year)}"
-                    )
-                )
-                print(tax_year_full_date(tax_year))
-                print(table.to_string(leading_nl=False))
-
-                summary = CapitalGainsSummary(
-                    num_disposals, disposal_proceeds, total_cost,
-                    total_gains, total_losses,
-                )
-                print(summary)
-
     def _create_orders_table(
-        self, filters: Sequence[Callable] | None = None
+            self, filters: Sequence[Callable] | None = None
     ) -> PrettyTable:
         table = PrettyTable(
             [
@@ -283,7 +157,7 @@ class OutputGenerator:
             proceeds = tr.total if isinstance(tr, Disposal) else None
 
             divider = (
-                idx == last_idx or tr.tax_year() != transactions[idx + 1].tax_year()
+                    idx == last_idx or tr.tax_year() != transactions[idx + 1].tax_year()
             )
 
             table.add_row(
@@ -304,7 +178,7 @@ class OutputGenerator:
         return table
 
     def _create_dividends_table(
-        self, filters: Sequence[Callable] | None = None
+            self, filters: Sequence[Callable] | None = None
     ) -> PrettyTable:
         table = PrettyTable(
             [
@@ -322,7 +196,7 @@ class OutputGenerator:
 
         for idx, tr in enumerate(transactions):
             divider = (
-                idx == last_idx or tr.tax_year() != transactions[idx + 1].tax_year()
+                    idx == last_idx or tr.tax_year() != transactions[idx + 1].tax_year()
             )
 
             table.add_row(
@@ -340,7 +214,7 @@ class OutputGenerator:
         return table
 
     def _create_transfers_table(
-        self, filters: Sequence[Callable] | None = None
+            self, filters: Sequence[Callable] | None = None
     ) -> PrettyTable:
         table = PrettyTable(
             [
@@ -362,7 +236,7 @@ class OutputGenerator:
                 widthdrew = abs(tr.total)
 
             divider = (
-                idx == last_idx or tr.tax_year() != transactions[idx + 1].tax_year()
+                    idx == last_idx or tr.tax_year() != transactions[idx + 1].tax_year()
             )
 
             table.add_row([tr.date, deposited, widthdrew], divider=divider)
@@ -370,7 +244,7 @@ class OutputGenerator:
         return table
 
     def _create_interest_table(
-        self, filters: Sequence[Callable] | None = None
+            self, filters: Sequence[Callable] | None = None
     ) -> PrettyTable:
         table = PrettyTable(
             [
@@ -384,7 +258,7 @@ class OutputGenerator:
 
         for idx, tr in enumerate(transactions):
             divider = (
-                idx == last_idx or tr.tax_year() != transactions[idx + 1].tax_year()
+                    idx == last_idx or tr.tax_year() != transactions[idx + 1].tax_year()
             )
 
             table.add_row([tr.date, tr.total], divider=divider)
@@ -392,17 +266,17 @@ class OutputGenerator:
         return table
 
     def _create_capital_gains_table_and_summary(
-        self,
-        tax_year: TaxYear,
-        ticker_filter: Ticker | None,
-        gains_only: bool,
-        losses_only: bool,
-        aggregate: bool = True,
+            self,
+            tax_year: TaxYear,
+            ticker_filter: Ticker | None,
+            gains_only: bool,
+            losses_only: bool,
+            aggregate: bool = True,
     ) -> tuple[PrettyTable, CapitalGainsSummary]:
         assert not (gains_only and losses_only)
 
-        if config.calc_method == "fifo":
-            id_field = Field("Acquisition Date", Format.DATE)
+        if config.costs_basis == "fifo":
+            id_field = Field("Identification")
         else:
             id_field = Field("Identification")
 
@@ -426,7 +300,7 @@ class OutputGenerator:
 
         # In FIFO mode, aggregate entries with the same disposal date,
         # acquisition date and ISIN into a single row.
-        if config.calc_method == "fifo" and aggregate:
+        if config.costs_basis == "fifo" and aggregate:
             aggregated: dict[tuple, dict] = {}
             for cg in capital_gains_list:
                 key = (cg.disposal.date, cg.acquisition_date, cg.disposal.isin)
@@ -460,7 +334,7 @@ class OutputGenerator:
                 table.add_row(
                     [
                         agg["disposal_date"],
-                        agg["acquisition_date"],
+                        "FIFO",
                         agg["name"],
                         agg["isin"],
                         agg["quantity"],
@@ -488,7 +362,7 @@ class OutputGenerator:
                 if losses_only and cg.gain_loss > 0.0:
                     continue
 
-                id_value = cg.acquisition_date if config.calc_method == "fifo" else cg.identification
+                id_value = "FIFO" if config.costs_basis == "fifo" else cg.identification
 
                 table.add_row(
                     [
@@ -517,8 +391,122 @@ class OutputGenerator:
 
         return table, summary
 
+    def _create_pt_table_and_summary(
+            self,
+            tax_year: TaxYear,
+            ticker_filter: Ticker | None,
+            gains_only: bool,
+            losses_only: bool,
+            aggregate: bool = True,
+    ) -> tuple[PrettyTable, CapitalGainsSummary]:
+        table = PrettyTable(
+            [
+                Field(""),
+                Field("País da fonte"),
+                Field("Código"),
+                Field("R. Ano"),
+                Field("R. Mês"),
+                Field("R. Dia"),
+                Field("R. Valor", Format.DECIMAL),
+                Field("A. Ano"),
+                Field("A. Mês"),
+                Field("A. Dia"),
+                Field("A. Valor", Format.DECIMAL),
+                Field("Security Name"),
+                Field("ISIN"),
+                Field("Quantity", Format.QUANTITY),
+            ]
+        )
+
+        capital_gains_list = list(self._taxcalc.capital_gains(tax_year))
+
+        rows: list[dict] = []
+        if config.costs_basis == "fifo" and aggregate:
+            aggregated: dict[tuple, dict] = {}
+            for cg in capital_gains_list:
+                key = (cg.disposal.date, cg.acquisition_date, cg.disposal.isin)
+                if key in aggregated:
+                    agg = aggregated[key]
+                    agg["proceeds"] += cg.disposal.gross_proceeds.amount
+                    agg["cost"] += cg.cost
+                    agg["gain_loss"] += cg.gain_loss
+                    agg["quantity"] += cg.quantity
+                else:
+                    aggregated[key] = {
+                        "disposal_date": cg.disposal.date,
+                        "acquisition_date": cg.acquisition_date,
+                        "ticker": cg.disposal.ticker,
+                        "name": cg.disposal.name,
+                        "isin": cg.disposal.isin,
+                        "quantity": cg.quantity,
+                        "proceeds": cg.disposal.gross_proceeds.amount,
+                        "cost": cg.cost,
+                        "gain_loss": cg.gain_loss,
+                    }
+            rows = list(aggregated.values())
+        else:
+            for cg in capital_gains_list:
+                rows.append({
+                    "disposal_date": cg.disposal.date,
+                    "acquisition_date": cg.acquisition_date,
+                    "ticker": cg.disposal.ticker,
+                    "name": cg.disposal.name,
+                    "isin": cg.disposal.isin,
+                    "quantity": cg.quantity,
+                    "proceeds": cg.disposal.gross_proceeds.amount,
+                    "cost": cg.cost,
+                    "gain_loss": cg.gain_loss,
+                })
+
+        num_disposals = 0
+        disposal_proceeds = total_cost = total_gains = total_losses = Decimal("0.0")
+
+        row_num = 951
+        for row in rows:
+            if ticker_filter is not None and row["ticker"] != ticker_filter:
+                continue
+            if gains_only and row["gain_loss"] < 0.0:
+                continue
+            if losses_only and row["gain_loss"] > 0.0:
+                continue
+
+            d = row["disposal_date"]
+            a = row["acquisition_date"]
+
+            table.add_row([
+                row_num,
+                196,
+                "G20",
+                d.year,
+                d.month,
+                d.day,
+                round(row["proceeds"], 2),
+                a.year if a else "",
+                a.month if a else "",
+                a.day if a else "",
+                round(row["cost"], 2),
+                row["name"],
+                row["isin"],
+                row["quantity"],
+            ])
+            row_num += 1
+
+            num_disposals += 1
+            disposal_proceeds += round(row["proceeds"], 2)
+            total_cost += round(row["cost"], 2)
+            if row["gain_loss"] > 0.0:
+                total_gains += row["gain_loss"]
+            else:
+                total_losses += abs(row["gain_loss"])
+
+        summary = CapitalGainsSummary(
+            num_disposals, disposal_proceeds, total_cost, total_gains, total_losses
+        )
+
+        return table, summary
+
     def _create_holdings_table(
-        self, ticker_filter: Ticker | None = None, show_gain_loss: bool = False
+            self, ticker_filter: Ticker | None = None, show_gain_loss: bool = False
     ) -> PrettyTable:
         table = PrettyTable(
             [

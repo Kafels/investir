@@ -35,9 +35,9 @@ CURRENCY_SYMBOLS: Final = {
 
 def get_base_currency():
     """Return the configured base currency."""
-    return config.base_currency
+    return config.currency
 
 
 def get_currency_symbol() -> str:
     """Return the symbol for the configured base currency."""
-    return CURRENCY_SYMBOLS.get(config.base_currency.code, config.base_currency.code)
+    return CURRENCY_SYMBOLS.get(config.currency.code, config.currency.code)

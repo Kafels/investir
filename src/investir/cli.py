@@ -10,7 +10,7 @@ from typing import Annotated, Optional
 import click
 import typer
 
-from investir.config import config
+from investir.config import ReportFormat, config
 from investir.exceptions import InvestirError
 from investir.findata import (
     FinancialData,
@@ -238,10 +238,10 @@ def main_callback(
             ),
         ),
     ] = config.cache_dir,
-    base_currency: Annotated[
+    currency: Annotated[
         str,
         typer.Option(
-            "--base-currency",
+            "--currency",
             help=(
                 "Base currency for calculations and reporting "
                 "(e.g. GBP, EUR). Defaults to GBP."
@@ -259,10 +259,10 @@ def main_callback(
             ),
         ),
     ] = None,
-    calc_method: Annotated[
+    costs_basis: Annotated[
         Optional[str],
         typer.Option(
-            "--calc-method",
+            "--costs-basis",
             help=(
                 "Capital gains calculation method: 'hmrc' for UK share "
                 "identification rules (Section 104 pool), 'fifo' for "
@@ -297,20 +297,20 @@ def main_callback(
     config.strict = strict
     config.offline = offline
     config.cache_dir = cache_dir
-    config.base_currency = get_currency(base_currency.upper())
+    config.currency = get_currency(currency.upper())
 
     # Determine fiscal year period
     if calendar_year is True or (
-        calendar_year is None and config.base_currency.code != "GBP"
+        calendar_year is None and config.currency.code != "GBP"
     ):
         config.tax_year_start_month = 1
         config.tax_year_start_day = 1
 
     # Determine calculation method
-    if calc_method is not None:
-        config.calc_method = calc_method
-    elif config.base_currency.code != "GBP":
-        config.calc_method = "fifo"
+    if costs_basis is not None:
+        config.costs_basis = costs_basis
+    elif config.currency.code != "GBP":
+        config.costs_basis = "fifo"
 
     if quiet:
         config.log_level = logging.CRITICAL
@@ -433,13 +433,13 @@ def capital_gains_command(
             help="Disable aggregation of same-day entries in FIFO mode.",
         ),
     ] = False,
-    irs_pt: Annotated[
-        bool,
+    report_format: Annotated[
+        ReportFormat,
         typer.Option(
-            "--irs-pt",
-            help="Output in Portuguese IRS Anexo J format.",
+            "--table-format",
+            help="Report format: UK (United Kingdom) or PT (Portugal).",
         ),
-    ] = False,
+    ] = ReportFormat.UK,
     tax_year: TaxYearOpt = None,
     ticker: TickerOpt = None,
     include_fx_fees: IncludeFxFeesOpt = config.include_fx_fees,
@@ -467,7 +467,7 @@ def capital_gains_command(
         outputter = make_output_generator(parse(files), ctx)
         outputter.show_capital_gains(
             format, tax_year, ticker, gains_only, losses_only,
-            aggregate=not no_aggregate, irs_pt=irs_pt
+            aggregate=not no_aggregate, report_format=report_format
         )
     except InvestirError as ex:
         abort(ex)
