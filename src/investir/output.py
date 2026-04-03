@@ -412,9 +412,6 @@ class OutputGenerator:
                 Field("A. Mês"),
                 Field("A. Dia"),
                 Field("A. Valor", Format.DECIMAL),
-                Field("Security Name"),
-                Field("ISIN"),
-                Field("Quantity", Format.QUANTITY),
             ]
         )
 
@@ -485,9 +482,6 @@ class OutputGenerator:
                 a.month if a else "",
                 a.day if a else "",
                 round(row["cost"], 2),
-                row["name"],
-                row["isin"],
-                row["quantity"],
             ])
             row_num += 1
 

@@ -388,13 +388,13 @@ def capital_gains_command(
     losses_only: Annotated[
         bool, typer.Option("--losses", help="Show only capital losses.")
     ] = False,
-    no_aggregate: Annotated[
+    aggregate: Annotated[
         bool,
         typer.Option(
-            "--no-aggregate",
-            help="Disable aggregation of same-day entries in FIFO mode.",
+            "--aggregate/--no-aggregate",
+            help="Aggregate same-day entries in FIFO mode.",
         ),
-    ] = False,
+    ] = True,
     report_format: Annotated[
         ReportFormat,
         typer.Option(
@@ -429,7 +429,7 @@ def capital_gains_command(
         outputter = make_output_generator(parse(files), ctx)
         outputter.show_capital_gains(
             format, tax_year, ticker, gains_only, losses_only,
-            aggregate=not no_aggregate, report_format=report_format
+            aggregate=aggregate, report_format=report_format
         )
     except InvestirError as ex:
         abort(ex)
