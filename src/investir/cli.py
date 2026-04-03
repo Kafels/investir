@@ -10,7 +10,7 @@ from typing import Annotated, Optional
 import click
 import typer
 
-from investir.config import ReportFormat, config
+from investir.config import Country, ReportFormat, config
 from investir.exceptions import InvestirError
 from investir.findata import (
     FinancialData,
@@ -238,39 +238,16 @@ def main_callback(
             ),
         ),
     ] = config.cache_dir,
-    currency: Annotated[
-        str,
+    country: Annotated[
+        Country,
         typer.Option(
-            "--currency",
+            "--country",
             help=(
-                "Base currency for calculations and reporting "
-                "(e.g. GBP, EUR). Defaults to GBP."
+                "Country whose fiscal rules to apply "
+                "(determines currency, tax year period and calculation method)."
             ),
         ),
-    ] = "GBP",
-    calendar_year: Annotated[
-        Optional[bool],
-        typer.Option(
-            "--calendar-year/--tax-year",
-            help=(
-                "Use calendar year (Jan-Dec) instead of UK tax year (Apr-Apr) "
-                "for fiscal period grouping. Automatically enabled for non-GBP "
-                "base currencies."
-            ),
-        ),
-    ] = None,
-    costs_basis: Annotated[
-        Optional[str],
-        typer.Option(
-            "--costs-basis",
-            help=(
-                "Capital gains calculation method: 'hmrc' for UK share "
-                "identification rules (Section 104 pool), 'fifo' for "
-                "First In First Out. Defaults to 'fifo' for non-GBP "
-                "currencies, 'hmrc' for GBP."
-            ),
-        ),
-    ] = None,
+    ] = Country.UK,
     verbose: Annotated[
         bool, typer.Option("--verbose", help="Enable additional logging.")
     ] = False,
@@ -292,25 +269,10 @@ def main_callback(
     if verbose and quiet:
         raise MutuallyExclusiveOption("--verbose", "--quiet")
 
-    from moneyed import get_currency
-
     config.strict = strict
     config.offline = offline
     config.cache_dir = cache_dir
-    config.currency = get_currency(currency.upper())
-
-    # Determine fiscal year period
-    if calendar_year is True or (
-        calendar_year is None and config.currency.code != "GBP"
-    ):
-        config.tax_year_start_month = 1
-        config.tax_year_start_day = 1
-
-    # Determine calculation method
-    if costs_basis is not None:
-        config.costs_basis = costs_basis
-    elif config.currency.code != "GBP":
-        config.costs_basis = "fifo"
+    config.apply_country(country)
 
     if quiet:
         config.log_level = logging.CRITICAL
